@@ -1,12 +1,6 @@
 // Google Sheets verilerini çekme ve HTML'e enjekte etme
 const SHEET_ID = '1NFUc139dLSxxob2t59L9rOFKfdOK2UJ9Ck3omSQoGU4';
 
-// Google Visualization API yükleme callback'i
-function initSheetData() {
-    google.charts.load('current', { 'packages': ['corechart'] });
-    google.charts.setOnLoadCallback(fetchSheetData);
-}
-
 // Google Sheets'ten veri çekme fonksiyonu (gviz/tq JSON yöntemi)
 function fetchSheetData() {
     try {
@@ -198,7 +192,10 @@ function escapeHtml(text) {
 
 // Sayfa yüklendiğinde Google Visualization API'yi başlat
 console.log('menu-loader.js yüklendi');
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM ready');
-    initSheetData();
+
+// Google Charts API'ni yükle ve callback'i ayarla
+google.charts.load('current', { 'packages': ['corechart'] });
+google.charts.setOnLoadCallback(function() {
+    console.log('Google Charts API yüklendi');
+    fetchSheetData();
 });
