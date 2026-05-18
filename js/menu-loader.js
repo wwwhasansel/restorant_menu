@@ -1,12 +1,19 @@
 // Google Sheets verilerini çekme ve HTML'e enjekte etme
 const SHEET_ID = '1NFUc139dLSxxob2t59L9rOFKfdOK2UJ9Ck3omSQoGU4';
-const SHEET_RANGE = 'A:E'; // kategori, ad, aciklama, fiyat, gorsel
+
+// Google Visualization API yükleme callback'i
+function initSheetData() {
+    google.charts.load('current', { 'packages': ['corechart'] });
+    google.charts.setOnLoadCallback(fetchSheetData);
+}
 
 // Google Sheets'ten veri çekme fonksiyonu (gviz/tq JSON yöntemi)
-async function fetchSheetData() {
+function fetchSheetData() {
     try {
-        const query = new window.google.visualization.Query(
-            `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?headers=1`
+        console.log('Veriler çekiliyor...');
+        
+        const query = new google.visualization.Query(
+            `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?headers=1&range=A:E`
         );
         
         query.send(handleQueryResponse);
@@ -18,66 +25,86 @@ async function fetchSheetData() {
 // Google Visualization API yanıtını işleme
 function handleQueryResponse(response) {
     if (response.isError()) {
-        console.error('Hata:', response.getMessage() + ' ' + response.getDetailedMessage());
+        console.error('Google Sheets Hatası:', response.getMessage() + ' ' + response.getDetailedMessage());
         return;
     }
 
-    const data = response.getDataTable();
-    const items = [];
+    try {
+        const data = response.getDataTable();
+        console.log('Veriler başarıyla çekildi. Satır sayısı:', data.getNumberOfRows());
 
-    // Veriyi işle ve kategori bazında gruplama yap
-    const grouped = {};
-    
-    for (let i = 0; i < data.getNumberOfRows(); i++) {
-        const kategori = data.getValue(i, 0)?.toLowerCase() || '';
-        const ad = data.getValue(i, 1) || '';
-        const aciklama = data.getValue(i, 2) || '';
-        const fiyat = data.getValue(i, 3) || '';
-        const gorsel = data.getValue(i, 4) || '';
+        // Veriyi işle ve kategori bazında gruplama yap
+        const grouped = {};
+        
+        for (let i = 0; i < data.getNumberOfRows(); i++) {
+            const kategori = (data.getValue(i, 0) || '').toLowerCase().trim();
+            const ad = data.getValue(i, 1) || '';
+            const aciklama = data.getValue(i, 2) || '';
+            const fiyat = data.getValue(i, 3) || '';
+            const gorsel = data.getValue(i, 4) || '';
 
-        if (!kategori || !ad) continue; // Boş satırları atla
+            // Boş satırları atla
+            if (!kategori || !ad) {
+                console.warn('Boş veri satırı atlandı:', { kategori, ad });
+                continue;
+            }
 
-        if (!grouped[kategori]) {
-            grouped[kategori] = [];
+            if (!grouped[kategori]) {
+                grouped[kategori] = [];
+            }
+
+            grouped[kategori].push({
+                ad,
+                aciklama,
+                fiyat,
+                gorsel
+            });
+
+            console.log('Ürün eklendi:', { kategori, ad, fiyat });
         }
 
-        grouped[kategori].push({
-            ad,
-            aciklama,
-            fiyat,
-            gorsel
-        });
+        console.log('Gruplandırılmış veriler:', grouped);
+        
+        // Veri varsa HTML'e enjekte et
+        if (Object.keys(grouped).length > 0) {
+            renderMenuItems(grouped);
+        } else {
+            console.warn('Hiç veri bulunamadı!');
+        }
+    } catch (error) {
+        console.error('Veri işlenirken hata:', error);
     }
-
-    // HTML'e enjekte et
-    renderMenuItems(grouped);
 }
 
 // Menü kartlarını HTML'e enjekte etme
 function renderMenuItems(grouped) {
     const galleryContainer = document.querySelector('.tm-gallery');
     
+    if (!galleryContainer) {
+        console.error('Gallery container bulunamadı!');
+        return;
+    }
+
     // Mevcut kategoriler
-    const categories = Object.keys(grouped);
+    const categories = Object.keys(grouped).sort();
+    console.log('Kategoriler:', categories);
     
     // Paging linklerini güncelle
     updatePagingLinks(categories);
     
+    // Galerini temizle
+    galleryContainer.innerHTML = '';
+    
     // Her kategori için galeriye div oluştur
-    Object.keys(grouped).forEach((kategori, index) => {
+    categories.forEach((kategori, index) => {
         const items = grouped[kategori];
         const pageId = `tm-gallery-page-${kategori}`;
-        
-        // Eğer sayfa zaten varsa, sil ve yeni oluştur
-        const existingPage = document.getElementById(pageId);
-        if (existingPage) {
-            existingPage.remove();
-        }
         
         // Yeni gallery page div oluştur
         const pageDiv = document.createElement('div');
         pageDiv.id = pageId;
         pageDiv.className = `tm-gallery-page ${index > 0 ? 'hidden' : ''}`;
+        pageDiv.setAttribute('data-category', kategori);
         
         // Ürünleri HTML olarak render et
         items.forEach(item => {
@@ -99,6 +126,7 @@ function renderMenuItems(grouped) {
         });
         
         galleryContainer.appendChild(pageDiv);
+        console.log(`${kategori} kategorisine ${items.length} ürün eklendi`);
     });
 }
 
@@ -106,7 +134,10 @@ function renderMenuItems(grouped) {
 function updatePagingLinks(categories) {
     const pagingNav = document.querySelector('.tm-paging-links nav ul');
     
-    if (!pagingNav) return;
+    if (!pagingNav) {
+        console.error('Paging navigation bulunamadı!');
+        return;
+    }
     
     pagingNav.innerHTML = '';
     
@@ -123,24 +154,33 @@ function updatePagingLinks(categories) {
             e.preventDefault();
             
             const page = this.textContent.toLowerCase();
+            console.log('Kategori seçildi:', page);
+            
+            // Tüm galeri sayfalarını gizle
             document.querySelectorAll('.tm-gallery-page').forEach(el => {
                 el.classList.add('hidden');
             });
             
+            // Seçilen sayfayı göster
             const targetPage = document.getElementById(`tm-gallery-page-${page}`);
             if (targetPage) {
                 targetPage.classList.remove('hidden');
             }
             
+            // Paging linklerinden active class'ını kaldır
             document.querySelectorAll('.tm-paging-link').forEach(el => {
                 el.classList.remove('active');
             });
+            
+            // Seçilen linke active class'ını ekle
             this.classList.add('active');
         });
         
         li.appendChild(link);
         pagingNav.appendChild(li);
     });
+    
+    console.log('Paging linkler güncellendi');
 }
 
 // XSS koruması için HTML escape fonksiyonu
@@ -153,11 +193,12 @@ function escapeHtml(text) {
         '"': '&quot;',
         "'": '&#039;'
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
-// Sayfa yüklendiğinde veriyi çek
+// Sayfa yüklendiğinde Google Visualization API'yi başlat
+console.log('menu-loader.js yüklendi');
 document.addEventListener('DOMContentLoaded', function() {
-    // Google Visualization API'yi yükle ve veriyi çek
-    google.setOnLoadCallback(fetchSheetData);
+    console.log('DOM ready');
+    initSheetData();
 });
